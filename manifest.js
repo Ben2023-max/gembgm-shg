@@ -4,7 +4,7 @@
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#f1f3f4",
-  "theme_color": "#0F9D58",
+  "theme-color": "#0F9D58",
   "icons": [
     {
       "src": "https://i.ibb.co/0VpYm8K/gem-logo.png",
