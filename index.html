@@ -1,44 +1,139 @@
-// Replace the corresponding Project functions in your HTML script tag with these:
+// Replace the entire <script> block at the bottom of your GitHub file with this:
 
-// 1. Automatically load real projects from the Google Sheet when opening the tab
+const GOOGLE_API_URL = "PASTE_YOUR_COPIED_WEB_APP_URL_HERE";
+
+let currentActiveName = "";
+let fullReportData = [];
+let currentActiveTab = "form";
+let isEditingMode = false;
+let originalValueBeforeEdit = 0;
+
+window.onload = function() {
+  startLiveClock();
+  loadRosterNames();
+};
+
+function startLiveClock() {
+  function updateClock() {
+    const now = new Date();
+    const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
+    const formattedDate = now.toLocaleDateString('en-US', dateOptions);
+    let hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    document.getElementById("liveClockDisplay").textContent = formattedDate + " " + String(hours).padStart(2, '0') + ":" + minutes + ":" + seconds + " " + ampm;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+}
+
+// Fetch member names across the web from Google Sheets
+function loadRosterNames() {
+  document.getElementById("loadingMessage").textContent = "Locating Spreadsheet Roster...";
+  document.getElementById("loadingMessage").style.display = "block";
+  
+  // Custom execution calling gas via macros alternative for standalone github pages
+  fetch(`${GOOGLE_API_URL}?action=getNames`)
+    .then(res => res.json())
+    .then(names => buildTapMenu(names))
+    .catch(err => {
+      document.getElementById("loadingMessage").textContent = "Error loading roster: " + err.message;
+    });
+}
+
+function buildTapMenu(names) {
+  document.getElementById("loadingMessage").style.display = "none";
+  const container = document.getElementById("listOfMembers");
+  container.innerHTML = "";
+  names.forEach(name => {
+    const card = document.createElement("div");
+    card.className = "member-card";
+    card.setAttribute("data-name", name.toLowerCase());
+    card.innerHTML = `<span>${name}</span><span class="chevron">&#8250;</span>`;
+    card.onclick = () => openInputWindow(name);
+    container.appendChild(card);
+  });
+}
+
+function submitData() {
+  const header = document.getElementById("headerSelect").value;
+  const amountStr = document.getElementById("amountInput").value.trim();
+  const statusDiv = document.getElementById("status");
+
+  let targetValue = parseFloat(amountStr) || 0;
+  let valueToSend = isEditingMode ? (targetValue - originalValueBeforeEdit) : targetValue;
+
+  statusDiv.style.display = "block";
+  statusDiv.className = "";
+  statusDiv.textContent = "Processing entries...";
+
+  // Pushing payment entries across the web directly into your Google Sheet
+  fetch(GOOGLE_API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "addContribution",
+      name: currentActiveName,
+      header: header,
+      amount: String(valueToSend)
+    })
+  })
+  .then(res => res.json())
+  .then(response => {
+    if(response.status === "success") {
+      showNotification("Record synced successfully!", "success");
+      setTimeout(() => {
+        closeModal();
+        switchHarambeeTab('view');
+      }, 1200);
+    } else {
+      showNotification(response.message, "error");
+    }
+  })
+  .catch(err => showNotification("Network connection error.", "error"));
+}
+
+function loadLiveBalancesReport() {
+  document.getElementById("tableLoadingMessage").style.display = "block";
+  document.getElementById("reportContainer").style.display = "none";
+  
+  fetch(`${GOOGLE_API_URL}?action=getBalances`)
+    .then(res => res.json())
+    .then(data => renderBalancesTable(data))
+    .catch(err => {
+      document.getElementById("tableLoadingMessage").textContent = "Failed to sync: " + err.message;
+    });
+}
+
 function openProjectsRegistry() {
   switchPage('projectsPage');
-  
   const container = document.getElementById("projectCardsContainer");
   container.innerHTML = '<div class="loading">Loading active projects...</div>';
   
-  google.script.run
-    .withSuccessHandler(function(projects) {
+  fetch(`${GOOGLE_API_URL}?action=getProjects`)
+    .then(res => res.json())
+    .then(projects => {
       container.innerHTML = "";
       if (projects.length === 0) {
         container.innerHTML = '<p style="text-align:center; color:#666;">No active projects registered yet.</p>';
         return;
       }
-      
-      // Loop through and display each project from the Google Sheet
       projects.forEach(proj => {
         const cardRow = document.createElement("div");
         cardRow.className = "project-card";
         cardRow.innerHTML = `
-          <div class="project-card-header">
-            <h4 class="project-title">${proj.name}</h4>
-            <span class="project-amt-badge">Ksh ${parseFloat(proj.amount).toLocaleString()} / Member</span>
-          </div>
-          <div class="project-details-grid">
-            <div>Start Date: <span>${proj.startDate}</span></div>
-            <div>End Date: <span>${proj.endDate}</span></div>
-          </div>
+          <div class="project-card-header"><h4 class="project-title">${proj.name}</h4><span class="project-amt-badge">Ksh ${parseFloat(proj.amount).toLocaleString()} / Member</span></div>
+          <div class="project-details-grid"><div>Start Date: <span>${proj.startDate}</span></div><div>End Date: <span>${proj.endDate}</span></div></div>
         `;
         container.appendChild(cardRow);
       });
     })
-    .withFailureHandler(function(err) {
-      container.innerHTML = '<div class="loading" style="color:red;">Error loading projects: ' + err.message + '</div>';
-    })
-    .getProjectsList();
+    .catch(err => {
+      container.innerHTML = '<div class="loading" style="color:red;">Error loading projects.</div>';
+    });
 }
 
-// 2. Submit the form data directly to the Google Sheet backend
 function submitNewProject() {
   const name = document.getElementById("projNameInput").value.trim();
   const start = document.getElementById("projStartDate").value;
@@ -57,18 +152,44 @@ function submitNewProject() {
   statLabel.className = "success";
   statLabel.textContent = "Sending to Google Sheet...";
 
-  // Run the Google backend script function
-  google.script.run
-    .withSuccessHandler(function(response) {
-      statLabel.textContent = "Saved to Database!";
-      setTimeout(() => {
-        closeProjectModal();
-        openProjectsRegistry(); // Refresh the list automatically
-      }, 1000);
+  fetch(GOOGLE_API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "saveProject",
+      name: name,
+      startDate: start,
+      endDate: end,
+      amount: amt
     })
-    .withFailureHandler(function(err) {
-      statLabel.className = "error";
-      statLabel.textContent = "Failed to save: " + err.message;
-    })
-    .saveNewProject(name, start, end, amt);
+  })
+  .then(res => res.json())
+  .then(response => {
+    statLabel.textContent = "Saved to Database!";
+    setTimeout(() => {
+      closeProjectModal();
+      openProjectsRegistry();
+    }, 1000);
+  })
+  .catch(err => {
+    statLabel.className = "error";
+    statLabel.textContent = "Failed to save.";
+  });
 }
+
+// Keep all your other display, UI switching, and styling helper functions exactly as they are below...
+function openHarambeeSystem() { switchPage('harambeePage'); switchHarambeeTab('form'); }
+function goToDashboard() { switchPage('dashboardPage'); }
+function handleUnifiedSearch() { if(currentActiveTab === 'form') { filterFormList(); } else { filterReportTable(); } }
+function openInputWindow(name) { isEditingMode = false; originalValueBeforeEdit = 0; currentActiveName = name; document.getElementById("selectedMemberName").textContent = name; document.getElementById("editContextSubtitle").textContent = "Logging new contribution payment"; document.getElementById("amountInput").value = ""; document.getElementById("status").style.display = "none"; document.getElementById("formModal").style.display = "flex"; }
+function closeModal() { document.getElementById("formModal").style.display = "none"; }
+function openNewProjectModal() { document.getElementById("projNameInput").value = ""; document.getElementById("projStartDate").value = ""; document.getElementById("projEndDate").value = ""; document.getElementById("projAmtPerMember").value = ""; document.getElementById("projectStatus").style.display = "none"; document.getElementById("projectFormModal").style.display = "flex"; }
+function closeProjectModal() { document.getElementById("projectFormModal").style.display = "none"; }
+function showNotification(msg, statusType) { const statusDiv = document.getElementById("status"); statusDiv.style.display = "block"; statusDiv.className = statusType; statusDiv.textContent = msg; }
+function filterFormList() { const query = document.getElementById("unifiedSearchInput").value.toLowerCase(); document.querySelectorAll("#listOfMembers .member-card").forEach(card => { card.style.display = card.getAttribute("data-name").includes(query) ? "flex" : "none"; }); }
+function renderBalancesTable(data) { fullReportData = data; document.getElementById("tableLoadingMessage").style.display = "none"; document.getElementById("reportContainer").style.display = "block"; const rowsBody = document.getElementById("matrixRowsBody"); rowsBody.innerHTML = ""; data.forEach(item => { const row = document.createElement("tr"); row.className = "m-body-row"; const cleanIntro = (!item.introduction || item.introduction === "-") ? "0" : item.introduction.replace(/,/g, ''); const cleanHarambee = (!item.harambee || item.harambee === "-") ? "0" : item.harambee.replace(/,/g, ''); row.innerHTML = `<td class="col-name"><strong>${item.name}</strong></td><td class="col-intro editable-cell" onclick="jumpToEditForm('${item.name.replace(/'/g, "\\'")}', 'Introduction', '${cleanIntro}')">${item.introduction}</td><td class="col-harambee editable-cell" onclick="jumpToEditForm('${item.name.replace(/'/g, "\\'")}', 'Harambee', '${cleanHarambee}')">${item.harambee}</td><td class="col-total bold-total">${item.total}</td>`; rowsBody.appendChild(row); }); filterReportTable(); }
+function filterReportTable() { const query = document.getElementById("unifiedSearchInput").value.toLowerCase(); let vi = 0, vh = 0, vg = 0; document.querySelectorAll("#matrixRowsBody .m-body-row").forEach((row, idx) => { const item = fullReportData[idx]; if(!item) return; if(item.name.toLowerCase().includes(query)) { row.style.display = "table-row"; vi += parseFloat(item.introduction.replace(/,/g, '')) || 0; vh += parseFloat(item.harambee.replace(/,/g, '')) || 0; vg += parseFloat(item.total.replace(/,/g, '')) || 0; } else { row.style.display = "none"; } }); document.getElementById("footIntroTotal").textContent = vi.toLocaleString(); document.getElementById("footHarambeeTotal").textContent = vh.toLocaleString(); document.getElementById("footGrandTotal").textContent = vg.toLocaleString(); }
+function jumpToEditForm(m, t, c) { switchHarambeeTab('form'); isEditingMode = true; originalValueBeforeEdit = parseFloat(c) || 0; currentActiveName = m; document.getElementById("selectedMemberName").textContent = m; document.getElementById("editContextSubtitle").textContent = "Editing existing entry record"; document.getElementById("headerSelect").value = t; document.getElementById("amountInput").value = c === "0" ? "" : c; document.getElementById("status").style.display = "none"; document.getElementById("formModal").style.display = "flex"; }
+function switchPage(pageId) { document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active-view')); document.getElementById(pageId).classList.add('active-view'); const inlineBackBtn = document.getElementById('inlineBackBtn'); const mainTitleText = document.getElementById('dynamicMainTitle'); const controlRowWrapper = document.getElementById('harambeeSystemControls'); const stickyHeader = document.getElementById('stickyTableHeaders'); const searchInput = document.getElementById('unifiedSearchInput'); const formBtn = document.getElementById('subFormBtn'); const viewBtn = document.getElementById('subViewBtn'); const snapBtn = document.getElementById('snapActionBtn'); const headerProjectBtn = document.getElementById('headerNewProjectBtn'); if(pageId === 'dashboardPage') { inlineBackBtn.style.display = 'none'; mainTitleText.textContent = "GEM BUNGOMA SHG"; controlRowWrapper.style.display = 'none'; stickyHeader.style.display = 'none'; } else if(pageId === 'harambeePage') { inlineBackBtn.style.display = 'block'; mainTitleText.textContent = "Harambee System"; controlRowWrapper.style.display = 'block'; formBtn.style.display = 'block'; viewBtn.style.display = 'block'; headerProjectBtn.style.display = 'none'; } else if(pageId === 'projectsPage') { inlineBackBtn.style.display = 'block'; mainTitleText.textContent = "Projects Registry"; controlRowWrapper.style.display = 'block'; formBtn.style.display = 'none'; viewBtn.style.display = 'none'; snapBtn.style.display = 'none'; searchInput.style.display = 'none'; stickyHeader.style.display = 'none'; headerProjectBtn.style.display = 'block'; } }
+function switchHarambeeTab(tabMode) { currentActiveTab = tabMode; const formArea = document.getElementById('harambeeFormArea'); const viewArea = document.getElementById('harambeeViewArea'); const formBtn = document.getElementById('subFormBtn'); const viewBtn = document.getElementById('subViewBtn'); const snapBtn = document.getElementById('snapActionBtn'); const stickyHeader = document.getElementById('stickyTableHeaders'); const searchInput = document.getElementById('unifiedSearchInput'); const headerProjectBtn = document.getElementById('headerNewProjectBtn'); searchInput.value = ""; headerProjectBtn.style.display = 'none'; if (tabMode === 'form') { formArea.style.display = 'block'; viewArea.style.display = 'none'; stickyHeader.style.display = 'none'; snapBtn.style.display = 'none'; searchInput.style.display = 'block'; searchInput.placeholder = "🔍 Search member to pay..."; formBtn.style.background = 'var(--primary)'; formBtn.style.color = 'white'; formBtn.style.border = '1.5px solid var(--primary)'; viewBtn.style.background = 'white'; viewBtn.style.color = '#202124'; viewBtn.style.border = '1.5px solid #202124'; filterFormList(); } else { formArea.style.display = 'none'; viewArea.style.display = 'block'; stickyHeader.style.display = 'block'; snapBtn.style.display = 'flex'; searchInput.style.display = 'block'; searchInput.placeholder = "🔍 Search grid..."; formBtn.style.background = 'white'; formBtn.style.color = 'var(--primary)'; formBtn.style.border = '1.5px solid var(--primary)'; viewBtn.style.background = '#202124'; viewBtn.style.color = 'white'; viewBtn.style.border = '1.5px solid #202124'; loadLiveBalancesReport(); } }
+function copyTableAsSnapshotImage() { const toast = document.getElementById("shareToast"); toast.style.display = "block"; toast.textContent = "📸 Creating snapshot image..."; const printBodyArea = document.getElementById("reportContainer"); const headerCopySource = document.getElementById("printableStickyHeaderPart"); const clonedHeaderBlock = headerCopySource.cloneNode(true); printBodyArea.insertBefore(clonedHeaderBlock, printBodyArea.firstChild); html2canvas(printBodyArea, { backgroundColor: "#ffffff", scale: 2, logging: false, useCORS: true }).then(canvas => { printBodyArea.removeChild(clonedHeaderBlock); canvas.toBlob(blob => { try { navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]).then(() => { toast.textContent = "✅ Image copied! Open WhatsApp and Paste."; setTimeout(() => { toast.style.display = "none"; }, 3500); }).catch(err => showToastFallbackError()); } catch (e) { showToastFallbackError(); } }, "image/png"); }).catch(err => { toast.textContent = "❌ Capture error."; setTimeout(() => { toast.style.display = "none"; }, 2000); printBodyArea.removeChild(clonedHeaderBlock); }); }
+function showToastFallbackError() { const toast = document.getElementById("shareToast"); toast.textContent = "⚠️ Clipboard blocked. Long press to copy manually."; setTimeout(() => { toast.style.display = "none"; }, 4000); }
