@@ -15,11 +15,10 @@
 
   <style>
     body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f3f4; }
-    iframe { border: none; width: 100%; height: 100%; }
+    iframe { border: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
   </style>
   
   <script>
-    // Registers the background file required to force Chrome's native installation
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
@@ -27,6 +26,7 @@
 </head>
 <body>
 
- <iframe src="https://script.google.com/macros/s/AKfycbxj3Xb9jT5H0PZat3XN5A_o_E6p-HjBPlC5mUqD8gZ0C7Eswx4wGg13R2O_b5uWvA/exec"></iframe>
+  <iframe src="YOUR_ACTUAL_WEB_APP_URL_HERE"></iframe>
+
 </body>
 </html>
