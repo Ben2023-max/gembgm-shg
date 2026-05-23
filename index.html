@@ -1,32 +1,74 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GEM SHG</title>
+// Replace the corresponding Project functions in your HTML script tag with these:
 
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/png" href="https://i.ibb.co/0VpYm8K/gem-logo.png">
-  <link rel="apple-touch-icon" href="https://i.ibb.co/0VpYm8K/gem-logo.png">
+// 1. Automatically load real projects from the Google Sheet when opening the tab
+function openProjectsRegistry() {
+  switchPage('projectsPage');
   
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0F9D58">
-
-  <style>
-    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f1f3f4; }
-    iframe { border: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
-  </style>
+  const container = document.getElementById("projectCardsContainer");
+  container.innerHTML = '<div class="loading">Loading active projects...</div>';
   
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
-    }
-  </script>
-</head>
-<body>
+  google.script.run
+    .withSuccessHandler(function(projects) {
+      container.innerHTML = "";
+      if (projects.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:#666;">No active projects registered yet.</p>';
+        return;
+      }
+      
+      // Loop through and display each project from the Google Sheet
+      projects.forEach(proj => {
+        const cardRow = document.createElement("div");
+        cardRow.className = "project-card";
+        cardRow.innerHTML = `
+          <div class="project-card-header">
+            <h4 class="project-title">${proj.name}</h4>
+            <span class="project-amt-badge">Ksh ${parseFloat(proj.amount).toLocaleString()} / Member</span>
+          </div>
+          <div class="project-details-grid">
+            <div>Start Date: <span>${proj.startDate}</span></div>
+            <div>End Date: <span>${proj.endDate}</span></div>
+          </div>
+        `;
+        container.appendChild(cardRow);
+      });
+    })
+    .withFailureHandler(function(err) {
+      container.innerHTML = '<div class="loading" style="color:red;">Error loading projects: ' + err.message + '</div>';
+    })
+    .getProjectsList();
+}
 
-  <iframe src="https://script.google.com/macros/s/AKfycbx3Gw4UKUrELnvGjNKvYwLvTGcWMD91lh-wlhDwXAtOflIv4SMaOECU6VcV2aRi6VNa/exec"></iframe>
+// 2. Submit the form data directly to the Google Sheet backend
+function submitNewProject() {
+  const name = document.getElementById("projNameInput").value.trim();
+  const start = document.getElementById("projStartDate").value;
+  const end = document.getElementById("projEndDate").value;
+  const amt = document.getElementById("projAmtPerMember").value.trim();
+  const statLabel = document.getElementById("projectStatus");
 
-</body>
-</html>
+  if(!name || !start || !end || !amt) {
+    statLabel.style.display = "block";
+    statLabel.className = "error";
+    statLabel.textContent = "All form details are required.";
+    return;
+  }
+
+  statLabel.style.display = "block";
+  statLabel.className = "success";
+  statLabel.textContent = "Sending to Google Sheet...";
+
+  // Run the Google backend script function
+  google.script.run
+    .withSuccessHandler(function(response) {
+      statLabel.textContent = "Saved to Database!";
+      setTimeout(() => {
+        closeProjectModal();
+        openProjectsRegistry(); // Refresh the list automatically
+      }, 1000);
+    })
+    .withFailureHandler(function(err) {
+      statLabel.className = "error";
+      statLabel.textContent = "Failed to save: " + err.message;
+    })
+    .saveNewProject(name, start, end, amt);
+}
